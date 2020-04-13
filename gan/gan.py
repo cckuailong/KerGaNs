@@ -1,3 +1,18 @@
+# Name: 
+#   Generative Adversarial Nets
+# Desc:
+#   Basic GAN
+# Procedure:
+#
+#         |---  Real images ----------------------|
+#         |                                       |       -----      |----> 1 (real)
+#    |--->|                                       | ----> | D | ---->|
+#    |    |               -----                   |       -----   |  |----> 0 (fake)
+#    |    |---  Noise --> | G | --> Fake images --|               |
+#    |                    -----                                   |
+#    |<--------------  -------------------------------------------|
+
+
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.layers import Input, Dense, Reshape, Flatten
 from tensorflow.keras.layers import BatchNormalization
@@ -10,14 +25,6 @@ import sys
 import os
 import numpy as np
 
-# GAN Procedure
-#         |---  Real images ----------------------|
-#         |                                       |       -----      |----> 1 (real)
-#    |--->|                                       | ----> | D | ---->|
-#    |    |               -----                   |       -----   |  |----> 0 (fake)
-#    |    |---  Noise --> | G | --> Fake images --|               |
-#    |                    -----                                   |
-#    |<--------------  -------------------------------------------|
 
 class GAN:
     def __init__(self, img_shape, sample_shape=(5,5), latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss='binary_crossentropy', d_loss='binary_crossentropy'):
