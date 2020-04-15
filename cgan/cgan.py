@@ -1,7 +1,8 @@
 # Name: 
 #   Conditional Generative Adversarial Nets
 # Desc:
-#   GAN with labels
+#   GAN with labels, Input a label, generate corresponding image
+#   Exsample：Input: 1      Get: Image of digit 1
 # Procedure:
 #
 #         |---  Real images --------------------------------------|
