@@ -76,3 +76,11 @@ Various GAN via Keras
     Interpretable Representation Learning
     We can change the specific value in vector "C", to control the specific features
     E.g. Digit's category, continuous, and so on
+    Recognier is like the auto encoder(VAE)
+
+### AAE
+
+- Name:
+    Adversarial Autoencoder
+- Desc:
+    VAE + GAN
