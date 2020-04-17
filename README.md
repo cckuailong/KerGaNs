@@ -7,9 +7,16 @@ Various GAN via Keras
 ### GAN
 
 - Name:
-  Generative Adversarial Nets
+    Generative Adversarial Nets
 - Desc:
-  Basic GAN
+    Basic GAN
+
+### BGAN
+
+- Name:
+    Boundary Seeking GAN
+- Desc:
+    Loss function pay attention to the loss of D, which is usually 0.5
 
 ### DCGAN
 
@@ -84,3 +91,10 @@ Various GAN via Keras
     Adversarial Autoencoder
 - Desc:
     VAE + GAN
+
+### BIGAN
+
+- Name:
+    Bidirectional Generative Adversarial Nets
+- Desc:
+    GAN + VAE's encoder, train with (z, img) pair
