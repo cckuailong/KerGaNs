@@ -1,27 +1,22 @@
 # Name: 
-#   Deep Convolutions Generative Adversarial Network
+#   Generative Adversarial Nets
 # Desc:
-#   Generator and Discriminator use convolutions
-#       1. Using convolution layer instead of pooling layer
-#       2. Remove the full connection layer
-#       3. Use Batch normalization
-#       4. Use appropriate activation function
+#   Basic GAN
 # Procedure:
 #
-#         |---  Real images ----------------------|
-#         |                                       |       -----      |----> 1 (real)
-#    |--->|                                       | ----> | D | ---->|
-#    |    |               -----                   |       -----   |  |----> 0 (fake)
-#    |    |---  Noise --> | G | --> Fake images --|               |
-#    |                    -----                                   |
-#    |<--------------  -------------------------------------------|
+#  Real images ----------------------|
+#                                    |       -----      |----> 1 (real)
+#                                    | ----> | D | ---->|
+#            -----                   |       --|--      |----> 0 (fake)
+#  Noise --> | G | --> Fake images --|         |
+#            --|--                             |
+#              |<------------------------------|
 
 
 from tensorflow.keras.datasets import mnist
-from tensorflow.keras.layers import Input, Dense, Reshape, Flatten, Dropout
-from tensorflow.keras.layers import BatchNormalization, Activation, ZeroPadding2D
+from tensorflow.keras.layers import Input, Dense, Reshape, Flatten
+from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.layers import LeakyReLU
-from tensorflow.keras.layers import UpSampling2D, Conv2D
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.optimizers import Adam
 
@@ -31,7 +26,7 @@ import os
 import numpy as np
 
 
-class DCGAN:
+class GAN:
     def __init__(self, img_shape, sample_shape=(5,5), latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss='binary_crossentropy', d_loss='binary_crossentropy'):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
@@ -172,18 +167,17 @@ class Generator:
     def modelling(self):
         model = Sequential()
 
-        model.add(Dense(128 * 7 * 7, activation="relu", input_dim=self.latent_dim))
-        model.add(Reshape((7, 7, 128)))
-        model.add(UpSampling2D())
-        model.add(Conv2D(128, kernel_size=3, padding="same"))
+        model.add(Dense(256, input_dim=self.latent_dim))
+        model.add(LeakyReLU(alpha=0.2))
         model.add(BatchNormalization(momentum=0.8))
-        model.add(Activation("relu"))
-        model.add(UpSampling2D())
-        model.add(Conv2D(64, kernel_size=3, padding="same"))
+        model.add(Dense(512))
+        model.add(LeakyReLU(alpha=0.2))
         model.add(BatchNormalization(momentum=0.8))
-        model.add(Activation("relu"))
-        model.add(Conv2D(self.img_shape[2], kernel_size=3, padding="same"))
-        model.add(Activation("tanh"))
+        model.add(Dense(1024))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(np.prod(self.img_shape), activation="tanh"))
+        model.add(Reshape(self.img_shape))
 
         model.summary()
 
@@ -205,25 +199,12 @@ class Discriminator:
     def modelling(self):
         model = Sequential()
 
-        model.add(Conv2D(32, kernel_size=3, strides=2, input_shape=self.img_shape, padding="same"))
+        model.add(Flatten(input_shape=self.img_shape))
+        model.add(Dense(512))
         model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
-        model.add(ZeroPadding2D(padding=((0,1),(0,1))))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(256))
         model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Conv2D(256, kernel_size=3, strides=1, padding="same"))
-        model.add(BatchNormalization(momentum=0.8))
-        model.add(LeakyReLU(alpha=0.2))
-        model.add(Dropout(0.25))
-        model.add(Flatten())
-        model.add(Dense(1, activation='sigmoid'))
-
+        model.add(Dense(1, activation="sigmoid"))
         model.summary()
 
         img = Input(shape=self.img_shape)
@@ -235,5 +216,5 @@ class Discriminator:
 if __name__ == "__main__":
     # Load the dataset
     (X_train, _), (_, _) = mnist.load_data()
-    dcgan = DCGAN(img_shape=(28,28,1))
-    dcgan.train(data=X_train, epochs=900, batch_size=32, sample_interval=300)
+    gan = GAN(img_shape=(28,28,1))
+    gan.train(data=X_train, epochs=900, batch_size=32, sample_interval=300)

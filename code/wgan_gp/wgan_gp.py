@@ -5,13 +5,13 @@
 #   Get the medium distribution between P_real and P_fake
 # Procedure:
 #
-#         |---  Real images ----------------------|
-#         |                                       |       -----      |----> 1 (real)
-#    |--->|                                       | ----> | D | ---->|
-#    |    |               -----                   |       -----   |  |----> 0 (fake)
-#    |    |---  Noise --> | G | --> Fake images --|               |
-#    |                    -----                                   |
-#    |<--------------  -------------------------------------------|
+#  Real images ----------------------|
+#                                    |       -----      |----> 1 (real)
+#                                    | ----> | D | ---->|
+#            -----                   |       --|--      |----> 0 (fake)
+#  Noise --> | G | --> Fake images --|         |
+#            --|--                             |
+#              |<------------------------------|
 
 
 from tensorflow.keras.datasets import mnist

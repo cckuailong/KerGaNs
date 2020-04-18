@@ -1,34 +1,33 @@
 # Name: 
-#   Adversarial Autoencoder
+#   Least Square Generative Adversarial Nets
 # Desc:
-#   VAE + GAN
+#   Basic GAN + least square loss
 # Procedure:
-#                                -----      -----
-#         |---  Real images ---> | Q | ---> | P |
-#         |                      -----  |   -----                 -----      |----> 1 (real)
-#    |--->|                             |-- real latent --| ----> | D | ---->|
-#    |    |                                               |       -----   |  |----> 0 (fake)
-#    |    |---  Noise Latent ---------------------------->|               |
-#    |                                                                    |
-#    |<-------------------------------------------------------------------|
+#
+#  Real images ----------------------|
+#                                    |       -----      |----> 1 (real)
+#                                    | ----> | D | ---->|
+#            -----                   |       --|--      |----> 0 (fake)
+#  Noise --> | G | --> Fake images --|         |
+#            --|--                             |
+#              |<------------------------------|
 
 
 from tensorflow.keras.datasets import mnist
-from tensorflow.keras.layers import Input, Dense, Reshape, Flatten, Lambda
+from tensorflow.keras.layers import Input, Dense, Reshape, Flatten
+from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.layers import LeakyReLU
-from tensorflow.keras.layers import concatenate
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.optimizers import Adam
 
-import tensorflow.keras.backend as K
 import matplotlib.pyplot as plt
 import sys
 import os
 import numpy as np
 
 
-class AAE:
-    def __init__(self, img_shape, sample_shape=(5,5), latent=10, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['mse', 'binary_crossentropy'], d_loss='binary_crossentropy'):
+class GAN:
+    def __init__(self, img_shape, sample_shape=(5,5), latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss='mse', d_loss='mse'):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -48,18 +47,17 @@ class AAE:
             sys.exit(1)
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape, self.latent_dim)
+        discriminator = Discriminator(self.img_shape)
         self.discriminator = discriminator.model
         self.discriminator.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
 
-        vae = Generator(self.img_shape, self.latent_dim, self.discriminator)
-        # Build the encoder and decoder
-        self.encoder = vae.encoder
-        self.decoder = vae.decoder
+        combined = Generator(self.img_shape, self.latent_dim, self.discriminator)
+        # Build the generator
+        self.generator = combined.generator
 
         # Build the Combined (Generator + Discriminator)
-        self.vae = vae.model
-        self.vae.compile(loss=g_loss, loss_weights=[0.999, 0.001], optimizer=g_optimizer)
+        self.combined = combined.model
+        self.combined.compile(loss=g_loss, optimizer=g_optimizer)
 
     def train_one_epoch(self, X_train, epoch, batch_size, valid, fake):
         # ---------------------
@@ -70,23 +68,29 @@ class AAE:
         idx = np.random.randint(0, X_train.shape[0], batch_size)
         imgs = X_train[idx]
 
-        latent_real = self.encoder.predict(imgs)
-        latent_fake = np.random.normal(size=(batch_size, self.latent_dim))
+        # Generate noise randomly
+        noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+
+        # Generate a batch of new images
+        gen_imgs = self.generator.predict(noise)
 
         # Train the discriminator
-        d_loss_real = self.discriminator.train_on_batch(latent_real, valid)
-        d_loss_fake = self.discriminator.train_on_batch(latent_fake, fake)
+        d_loss_real = self.discriminator.train_on_batch(imgs, valid)
+        d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
         d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
         # ---------------------
         #  Train Generator
         # ---------------------
 
-        # Train the generator
-        g_loss = self.vae.train_on_batch(imgs, [imgs, valid])
+        noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
+
+        # Train the generator (to have the discriminator label samples as valid)
+        g_loss = self.combined.train_on_batch(noise, valid)
 
         # Plot the progress
-        print ("%d [D loss: %f, acc: %.2f%%] [G loss: %f, mse: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss[0], g_loss[1]))
+        print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, d_loss[0], 100*d_loss[1], g_loss))
+
 
     # Train the Models(G && D)
     def train(self, data, epochs, batch_size=128, sample_interval=200):
@@ -111,7 +115,7 @@ class AAE:
         # images matrix scale is r*c
         r, c = self.sample_shape
         noise = np.random.normal(0, 1, (r * c, self.latent_dim))
-        gen_imgs = self.decoder.predict(noise)
+        gen_imgs = self.generator.predict(noise)
 
         # Rescale images 0 - 1
         gen_imgs = 0.5 * gen_imgs + 0.5
@@ -136,71 +140,56 @@ class Generator:
         self.img_shape = img_shape
         self.latent_dim = latent
 
-        self.encoder = self.build_encoder()
-        self.decoder = self.build_decoder()
-        self.discriminator = discrim_model
+        self.generator = self.modelling()
         self.model = self.build(discrim_model)
 
     
     def build(self, discrim_model):
-        img = Input(shape=self.img_shape)
-        # The generator takes the image, encodes it and reconstructs it
-        # from the encoding
-        encoded_repr = self.encoder(img)
-        reconstructed_img = self.decoder(encoded_repr)
+        # The generator takes noise as input and generates imgs
+        z = Input(shape=(self.latent_dim,))
+        img = self.generator(z)
 
-        # For the adversarial_autoencoder model we will only train the generator
-        self.discriminator.trainable = False
+        # Get the Discriminator Model
+        discriminator = discrim_model
+        # For the combined model we will only train the generator
+        discriminator.trainable = False
 
-        # The discriminator determines validity of the encoding
-        validity = self.discriminator(encoded_repr)
+        # The discriminator takes generated images as input and determines validity
+        validity = discriminator(img)
 
-        # The adversarial_autoencoder model  (stacked generator and discriminator)
-        adversarial_autoencoder = Model(img, [reconstructed_img, validity])
+        # The combined model  (stacked generator and discriminator)
+        # Trains the generator to fool the discriminator
+        combined = Model(z, validity)
 
-        return adversarial_autoencoder
+        return combined
 
-    def sampling(self, args): 
-        z_mean, z_log_var = args
-        epsilon = K.random_normal(shape=(K.shape(z_mean)), mean=0.)
-        return z_mean + K.exp(z_log_var / 2) * epsilon
-
-    def build_encoder(self):
-        img = Input(shape=self.img_shape)
-        h = Flatten()(img)
-        h = Dense(512)(h)
-        h = LeakyReLU(alpha=0.2)(h)
-        h = Dense(512)(h)
-        h = LeakyReLU(alpha=0.2)(h)
-        z_mean = Dense(self.latent_dim)(h)
-        z_log_var = Dense(self.latent_dim)(h)
-
-        latent_repr = Lambda(self.sampling, output_shape=(self.latent_dim,))([z_mean, z_log_var])
-
-        return Model(img, latent_repr)
-
-    def build_decoder(self):
+    # Build Generator Model
+    def modelling(self):
         model = Sequential()
 
-        model.add(Dense(512, input_dim=self.latent_dim))
+        model.add(Dense(256, input_dim=self.latent_dim))
         model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
         model.add(Dense(512))
         model.add(LeakyReLU(alpha=0.2))
-        model.add(Dense(np.prod(self.img_shape), activation='tanh'))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(1024))
+        model.add(LeakyReLU(alpha=0.2))
+        model.add(BatchNormalization(momentum=0.8))
+        model.add(Dense(np.prod(self.img_shape), activation="tanh"))
         model.add(Reshape(self.img_shape))
 
         model.summary()
 
-        z = Input(shape=(self.latent_dim,))
-        img = model(z)
+        noise = Input(shape=(self.latent_dim,))
+        img = model(noise)
 
-        return Model(z, img)
+        return Model(inputs=noise, outputs=img)
+
 
 class Discriminator:
-    def __init__(self, img_shape, latent_dim):
+    def __init__(self, img_shape):
         self.img_shape = img_shape
-        self.latent_dim = latent_dim
-
         self.model = self.build()
 
     def build(self):
@@ -210,21 +199,22 @@ class Discriminator:
     def modelling(self):
         model = Sequential()
 
-        model.add(Dense(512, input_dim=self.latent_dim))
+        model.add(Flatten(input_shape=self.img_shape))
+        model.add(Dense(512))
         model.add(LeakyReLU(alpha=0.2))
         model.add(Dense(256))
         model.add(LeakyReLU(alpha=0.2))
         model.add(Dense(1, activation="sigmoid"))
         model.summary()
 
-        encoded_repr = Input(shape=(self.latent_dim, ))
-        validity = model(encoded_repr)
+        img = Input(shape=self.img_shape)
+        validity = model(img)
 
-        return Model(inputs=encoded_repr, outputs=validity)
+        return Model(inputs=img, outputs=validity)
 
 
 if __name__ == "__main__":
     # Load the dataset
     (X_train, _), (_, _) = mnist.load_data()
-    aae = AAE(img_shape=(28,28,1))
-    aae.train(data=X_train, epochs=4000, batch_size=32, sample_interval=4000)
+    gan = GAN(img_shape=(28,28,1))
+    gan.train(data=X_train, epochs=900, batch_size=32, sample_interval=300)

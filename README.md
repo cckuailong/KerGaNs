@@ -18,6 +18,13 @@ Various GAN via Keras
 - Desc:
     Loss function pay attention to the loss of D, which is usually 0.5
 
+### LSGAN
+
+- Name:
+    Least Square Generative Adversarial Nets
+- Desc:
+    Basic GAN + least square loss
+
 ### DCGAN
 
 - Name:
