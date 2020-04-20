@@ -2,7 +2,7 @@
 
 Various GAN via Keras
 
-## List
+## Generate Image
 
 ### GAN
 
@@ -105,3 +105,45 @@ Various GAN via Keras
     Bidirectional Generative Adversarial Nets
 - Desc:
     GAN + VAE's encoder, train with (z, img) pair
+
+## Image Enhancement
+
+### SRGAN
+
+- Name:
+    Super Resolution Generative Adversarial Nets
+- Desc:
+    Train the (LR Image, HR Image) to make the Low Resolution Image to High Resolution
+    Vgg19 to get the images' features. Compare the features of Real HR Image and the Fake ones which G generate.
+    D use the patchGAN Discriminator to fine every batch of the image
+
+## Image Style Migration
+
+### Pix2Pix
+
+- Name:
+    Pix2Pix Generative Adversarial Nets
+- Desc:
+    Train image pair (A,B), to realize the image style migration
+
+### CycleGAN
+
+- Name:
+    Cycle Generative Adversarial Nets
+- Desc:
+    Like two combined Pix2Pix(U-Net Gennerator + Patch Discriminator)
+
+### DiscoGan
+
+- Name:
+    Disco Generative Adversarial Nets
+- Desc:
+    Like CycleGAN, combine func has some differences
+
+### DualGAN
+
+- Name:
+    Dual Generative Adversarial Nets
+- Desc:
+    Like CycleGAN, combine func,G, D model has some differences
+    Use Wasserstein Distance as loss(WGAN)

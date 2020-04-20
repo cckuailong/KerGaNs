@@ -31,7 +31,7 @@ import numpy as np
 
 
 class SGAN:
-    def __init__(self, img_shape, num_classes, latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy'], d_loss=['binary_crossentropy', 'categorical_crossentropy']):
+    def __init__(self, img_shape, num_classes, latent_dim=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy'], d_loss=['binary_crossentropy', 'categorical_crossentropy']):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -44,24 +44,40 @@ class SGAN:
             print("[Error] Param 'num_classes' should be a positive integer, eg. 128")
             sys.exit(1)
         
-        if type(latent) == int and latent > 0:
-            self.latent_dim = latent
+        if type(latent_dim) == int and latent_dim > 0:
+            self.latent_dim = latent_dim
         else:
             print("[Error] Param 'latent' should be a positive integer, eg. 128")
             sys.exit(1)
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape, self.num_classes)
-        self.discriminator = discriminator.model
+        self.discriminator = Discriminator(self.img_shape, self.num_classes).modelling()
         self.discriminator.compile(loss=d_loss, loss_weights=[0.5, 0.5], optimizer=d_optimizer, metrics=['accuracy'])
 
-        combined = Generator(self.img_shape, self.num_classes, self.latent_dim, self.discriminator)
         # Build the generator
-        self.generator = combined.generator
+        self.generator = Generator(self.img_shape, self.num_classes, self.latent_dim).modelling()
 
         # Build the Combined (Generator + Discriminator)
-        self.combined = combined.model
+        self.combined = self.combine()
         self.combined.compile(loss=g_loss, optimizer=g_optimizer)
+
+    def combine(self):
+        # The generator takes noise as input and generates imgs
+        noise = Input(shape=(self.latent_dim,))
+        img = self.generator(noise)
+
+        # For the combined model we will only train the generator
+        self.discriminator.trainable = False
+
+        # The discriminator takes generated images as input and determines validity
+        validity, _ = self.discriminator(img)
+
+        # The combined model  (stacked generator and discriminator)
+        # Trains the generator to fool the discriminator
+        combined = Model(noise, validity)
+
+        return combined
+
 
     def train_one_epoch(self, X_train, y_train, epoch, batch_size, valid, fake, cw1, cw2):
         # ---------------------
@@ -156,33 +172,10 @@ class SGAN:
         plt.close()
 
 class Generator:
-    def __init__(self, img_shape, num_classes, latent, discrim_model):
+    def __init__(self, img_shape, num_classes, latent_dim):
         self.img_shape = img_shape
         self.num_classes = num_classes
-        self.latent_dim = latent
-
-        self.generator = self.modelling()
-        self.model = self.build(discrim_model)
-
-    
-    def build(self, discrim_model):
-        # The generator takes noise as input and generates imgs
-        noise = Input(shape=(self.latent_dim,))
-        img = self.generator(noise)
-
-        # Get the Discriminator Model
-        discriminator = discrim_model
-        # For the combined model we will only train the generator
-        discriminator.trainable = False
-
-        # The discriminator takes generated images as input and determines validity
-        validity, _ = discriminator(img)
-
-        # The combined model  (stacked generator and discriminator)
-        # Trains the generator to fool the discriminator
-        combined = Model(noise, validity)
-
-        return combined
+        self.latent_dim = latent_dim
 
     # Build Generator Model
     def modelling(self):
@@ -214,11 +207,6 @@ class Discriminator:
     def __init__(self, img_shape, num_classes):
         self.img_shape = img_shape
         self.num_classes = num_classes
-
-        self.model = self.build()
-
-    def build(self):
-        return self.modelling()
 
     # Build Discriminator Model
     def modelling(self):

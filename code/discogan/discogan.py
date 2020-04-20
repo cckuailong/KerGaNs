@@ -1,7 +1,7 @@
 # Name: 
-#   Cycle Generative Adversarial Nets
+#   Disco Generative Adversarial Nets
 # Desc:
-#   Like two combined Pix2Pix(U-Net Gennerator + Patch Discriminator)
+#   Like CycleGAN, combine func has some differences
 # Procedure:
 #                                                        |----------------------------->|
 #  Real ImageA -------------------------------|          |                              |
@@ -39,7 +39,7 @@ import os
 import numpy as np
 
 
-class CYCLEGAN:
+class DISCOGAN:
     def __init__(self, img_shape, sample_shape=(2,3), g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['mse', 'mse', 'mae', 'mae', 'mae', 'mae'], d_loss='mse'):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
@@ -65,10 +65,6 @@ class CYCLEGAN:
         self.gf = 32
         self.df = 64
 
-        # Loss weights
-        self.lambda_cycle = 10.0                    # Cycle-consistency loss
-        self.lambda_id = 0.1 * self.lambda_cycle    # Identity loss
-
         # Build and compile the discriminator
         self.d_A = Discriminator(self.img_shape, self.df).modelling()
         self.d_B = Discriminator(self.img_shape, self.df).modelling()
@@ -81,11 +77,7 @@ class CYCLEGAN:
 
         self.combined = self.combine()
         # Build and Compile the Combined (Generator + Discriminator)
-        self.combined.compile(loss=g_loss,
-                            loss_weights=[  1, 1,
-                                            self.lambda_cycle, self.lambda_cycle,
-                                            self.lambda_id, self.lambda_id ],
-                            optimizer=g_optimizer)
+        self.combined.compile(loss=g_loss, optimizer=g_optimizer)
     def combine(self):
         # Input images from both domains
         img_A = Input(shape=self.img_shape)
@@ -97,9 +89,6 @@ class CYCLEGAN:
         # Translate images back to original domain
         reconstr_A = self.g_BA(fake_B)
         reconstr_B = self.g_AB(fake_A)
-        # Identity mapping of images
-        img_A_id = self.g_BA(img_A)
-        img_B_id = self.g_AB(img_B)
 
         # For the combined model we will only train the generators
         self.d_A.trainable = False
@@ -112,8 +101,8 @@ class CYCLEGAN:
         # Combined model trains generators to fool discriminators
         combined = Model(inputs=[img_A, img_B],
                         outputs=[ valid_A, valid_B,
-                                reconstr_A, reconstr_B,
-                                img_A_id, img_B_id ])
+                                  fake_B, fake_A,
+                                  reconstr_A, reconstr_B ])
 
         return combined
 
@@ -148,7 +137,7 @@ class CYCLEGAN:
             # Train the generators
             g_loss = self.combined.train_on_batch([imgs_A, imgs_B],
                                                         [valid, valid,
-                                                        imgs_A, imgs_B,
+                                                        imgs_B, imgs_A,
                                                         imgs_A, imgs_B])
 
             # Plot the progress
@@ -285,5 +274,5 @@ class Discriminator:
 
 if __name__ == "__main__":
     # Load the dataset
-    cyclegan = CYCLEGAN(img_shape=(256,256,3))
-    cyclegan.train(epochs=200, batch_size=1, sample_interval=200)
+    discogan = DISCOGAN(img_shape=(256,256,3))
+    discogan.train(epochs=200, batch_size=1, sample_interval=200)

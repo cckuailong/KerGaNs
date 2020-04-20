@@ -39,7 +39,7 @@ def wasserstein_loss(y_true, y_pred):
     return K.mean(y_true * y_pred)
 
 class WGAN:
-    def __init__(self, img_shape, sample_shape=(5,5), latent=128, g_optimizer=RMSprop(lr=0.00005), d_optimizer=RMSprop(lr=0.00005), g_loss=wasserstein_loss, d_loss=wasserstein_loss):
+    def __init__(self, img_shape, sample_shape=(5,5), latent_dim=128, g_optimizer=RMSprop(lr=0.00005), d_optimizer=RMSprop(lr=0.00005), g_loss=wasserstein_loss, d_loss=wasserstein_loss):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -52,8 +52,8 @@ class WGAN:
             print("[Error] Param 'sample_shape' should be a double set, eg. (5,5)")
             sys.exit(1)
         
-        if type(latent) == int and latent > 0:
-            self.latent_dim = latent
+        if type(latent_dim) == int and latent_dim > 0:
+            self.latent_dim = latent_dim
         else:
             print("[Error] Param 'latent' should be a positive integer, eg. 128")
             sys.exit(1)
@@ -63,17 +63,32 @@ class WGAN:
         self.clip_value = 0.01
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape)
-        self.discriminator = discriminator.model
+        self.discriminator = Discriminator(self.img_shape).modelling()
         self.discriminator.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
 
-        combined = Generator(self.img_shape, self.latent_dim, self.discriminator)
         # Build the generator
-        self.generator = combined.generator
+        self.generator = Generator(self.img_shape, self.latent_dim).modelling()
 
         # Build the Combined (Generator + Discriminator)
-        self.combined = combined.model
+        self.combined = self.combine()
         self.combined.compile(loss=g_loss, optimizer=g_optimizer)
+        
+    def combine(self):
+        # The generator takes noise as input and generates imgs
+        z = Input(shape=(self.latent_dim,))
+        img = self.generator(z)
+
+        # For the combined model we will only train the generator
+        self.discriminator.trainable = False
+
+        # The discriminator takes generated images as input and determines validity
+        validity = self.discriminator(img)
+
+        # The combined model  (stacked generator and discriminator)
+        # Trains the generator to fool the discriminator
+        combined = Model(z, validity)
+
+        return combined
 
     def train_one_epoch(self, X_train, epoch, batch_size, valid, fake):
         # ---------------------
@@ -158,32 +173,9 @@ class WGAN:
         plt.close()
 
 class Generator:
-    def __init__(self, img_shape, latent, discrim_model):
+    def __init__(self, img_shape, latent):
         self.img_shape = img_shape
         self.latent_dim = latent
-
-        self.generator = self.modelling()
-        self.model = self.build(discrim_model)
-
-    
-    def build(self, discrim_model):
-        # The generator takes noise as input and generates imgs
-        z = Input(shape=(self.latent_dim,))
-        img = self.generator(z)
-
-        # Get the Discriminator Model
-        discriminator = discrim_model
-        # For the combined model we will only train the generator
-        discriminator.trainable = False
-
-        # The discriminator takes generated images as input and determines validity
-        validity = discriminator(img)
-
-        # The combined model  (stacked generator and discriminator)
-        # Trains the generator to fool the discriminator
-        combined = Model(z, validity)
-
-        return combined
 
     # Build Generator Model
     def modelling(self):
@@ -213,10 +205,6 @@ class Generator:
 class Discriminator:
     def __init__(self, img_shape):
         self.img_shape = img_shape
-        self.model = self.build()
-
-    def build(self):
-        return self.modelling()
 
     # Build Discriminator Model
     def modelling(self):

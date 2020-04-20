@@ -30,7 +30,7 @@ import numpy as np
 
 
 class BIGAN:
-    def __init__(self, img_shape, sample_shape=(5,5), latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy', 'binary_crossentropy'], d_loss=['binary_crossentropy']):
+    def __init__(self, img_shape, sample_shape=(5,5), latent_dim=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy', 'binary_crossentropy'], d_loss=['binary_crossentropy']):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -43,27 +43,47 @@ class BIGAN:
             print("[Error] Param 'sample_shape' should be a double set, eg. (5,5)")
             sys.exit(1)
         
-        if type(latent) == int and latent > 0:
-            self.latent_dim = latent
+        if type(latent_dim) == int and latent_dim > 0:
+            self.latent_dim = latent_dim
         else:
             print("[Error] Param 'latent' should be a positive integer, eg. 128")
             sys.exit(1)
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape, self.latent_dim)
-        self.discriminator = discriminator.model
+        self.discriminator = Discriminator(self.img_shape, self.latent_dim).modelling()
         self.discriminator.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
 
         # Build the encoder
-        self.encoder = Encoder(self.img_shape, self.latent_dim).model
+        self.encoder = Encoder(self.img_shape, self.latent_dim).modelling()
 
-        combined = Generator(self.img_shape, self.latent_dim, self.discriminator, self.encoder)
         # Build the generator
-        self.generator = combined.generator
+        self.generator = Generator(self.img_shape, self.latent_dim).modelling()
 
         # Build the Combined (Generator + Discriminator)
-        self.combined = combined.model
+        self.combined = self.combine()
         self.combined.compile(loss=g_loss, optimizer=g_optimizer)
+
+    def combine(self):
+        # For the combined model we will only train the generator
+        self.discriminator.trainable = False
+
+        # Generate image from sampled noise
+        fake_z = Input(shape=(self.latent_dim, ))
+        fake_img = self.generator(fake_z)
+
+        # Encode real image
+        real_img = Input(shape=self.img_shape)
+        real_z = self.encoder(real_img)
+
+        # Discrminate the (real_z, real_img), (fake_z, fake_img)
+        fake = self.discriminator([fake_z, fake_img])
+        valid = self.discriminator([real_z, real_img])
+
+        # Set up and compile the combined model
+        # Trains generator to fool the discriminator
+        combined = Model([fake_z, real_img], [fake, valid])
+
+        return combined
 
     def train_one_epoch(self, X_train, epoch, batch_size, valid, fake):
         # ---------------------
@@ -143,9 +163,7 @@ class Encoder:
         self.img_shape = img_shape
         self.latent_dim = latent_dim
 
-        self.model = self.build()
-
-    def build(self):
+    def modelling(self):
         model = Sequential()
 
         model.add(Flatten(input_shape=self.img_shape))
@@ -165,37 +183,9 @@ class Encoder:
         return Model(img, z)
 
 class Generator:
-    def __init__(self, img_shape, latent, discrim_model, encoder_model):
+    def __init__(self, img_shape, latent):
         self.img_shape = img_shape
         self.latent_dim = latent
-
-        self.generator = self.modelling()
-        self.model = self.build(discrim_model, encoder_model)
-
-    
-    def build(self, discrim_model, encoder_model):
-        # Get the Discriminator and Encoder Model
-        discriminator, encoder = discrim_model, encoder_model
-        # For the combined model we will only train the generator
-        discriminator.trainable = False
-
-        # Generate image from sampled noise
-        fake_z = Input(shape=(self.latent_dim, ))
-        fake_img = self.generator(fake_z)
-
-        # Encode real image
-        real_img = Input(shape=self.img_shape)
-        real_z = encoder(real_img)
-
-        # Discrminate the (real_z, real_img), (fake_z, fake_img)
-        fake = discriminator([fake_z, fake_img])
-        valid = discriminator([real_z, real_img])
-
-        # Set up and compile the combined model
-        # Trains generator to fool the discriminator
-        combined = Model([fake_z, real_img], [fake, valid])
-
-        return combined
 
     # Build Generator Model
     def modelling(self):
@@ -222,11 +212,6 @@ class Discriminator:
     def __init__(self, img_shape, latent_dim):
         self.img_shape = img_shape
         self.latent_dim = latent_dim
-
-        self.model = self.build()
-
-    def build(self):
-        return self.modelling()
 
     # Build Discriminator Model
     def modelling(self):

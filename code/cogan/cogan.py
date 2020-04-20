@@ -36,7 +36,7 @@ import scipy
 
 
 class COGAN:
-    def __init__(self, img_shape, sample_shape=(4,4), latent=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy', 'binary_crossentropy'], d_loss='binary_crossentropy'):
+    def __init__(self, img_shape, sample_shape=(4,4), latent_dim=128, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['binary_crossentropy', 'binary_crossentropy'], d_loss='binary_crossentropy'):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -49,26 +49,43 @@ class COGAN:
             print("[Error] Param 'sample_shape' should be a double set, eg. (5,5)")
             sys.exit(1)
         
-        if type(latent) == int and latent > 0:
-            self.latent_dim = latent
+        if type(latent_dim) == int and latent_dim > 0:
+            self.latent_dim = latent_dim
         else:
             print("[Error] Param 'latent' should be a positive integer, eg. 128")
             sys.exit(1)
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape)
-        self.discriminator1, self.discriminator2 = discriminator.model1, discriminator.model2
+        self.discriminator1, self.discriminator2 = Discriminator(self.img_shape).modelling()
         self.discriminator1.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
         self.discriminator2.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
 
-
-        combined = Generator(self.img_shape, self.latent_dim, self.discriminator1, self.discriminator2)
         # Build the generator
-        self.generator1, self.generator2 = combined.generator1, combined.generator2
+        self.generator1, self.generator2 = Generator(self.img_shape, self.latent_dim).modelling()
 
         # Build the Combined (Generator + Discriminator)
-        self.combined = combined.model
+        self.combined = self.combine()
         self.combined.compile(loss=g_loss, optimizer=g_optimizer)
+
+    def combine(self):
+        # The generator takes noise as input and generated imgs
+        z = Input(shape=(self.latent_dim,))
+        img1 = self.generator1(z)
+        img2 = self.generator2(z)
+
+        # For the combined model we will only train the generators
+        self.discriminator1.trainable = False
+        self.discriminator2.trainable = False
+
+        # The valid takes generated images as input and determines validity
+        valid1 = self.discriminator1(img1)
+        valid2 = self.discriminator2(img2)
+
+        # The combined model  (stacked generators and discriminators)
+        # Trains generators to fool discriminators
+        combined = Model(z, [valid1, valid2])
+
+        return combined
 
     def train_one_epoch(self, X1, X2, epoch, batch_size, valid, fake):
         # ---------------------
@@ -158,33 +175,9 @@ class COGAN:
         plt.close()
 
 class Generator:
-    def __init__(self, img_shape, latent, discrim_model1, discrim_model2):
+    def __init__(self, img_shape, latent):
         self.img_shape = img_shape
         self.latent_dim = latent
-
-        self.generator1, self.generator2 = self.modelling()
-        self.model = self.build(discrim_model1, discrim_model2)
-
-    
-    def build(self, discriminator1, discriminator2):
-        # The generator takes noise as input and generated imgs
-        z = Input(shape=(self.latent_dim,))
-        img1 = self.generator1(z)
-        img2 = self.generator2(z)
-
-        # For the combined model we will only train the generators
-        discriminator1.trainable = False
-        discriminator2.trainable = False
-
-        # The valid takes generated images as input and determines validity
-        valid1 = discriminator1(img1)
-        valid2 = discriminator2(img2)
-
-        # The combined model  (stacked generators and discriminators)
-        # Trains generators to fool discriminators
-        combined = Model(z, [valid1, valid2])
-
-        return combined
 
     # Build Generator Model
     def modelling(self):
@@ -221,11 +214,6 @@ class Generator:
 class Discriminator:
     def __init__(self, img_shape):
         self.img_shape = img_shape
-
-        self.model1, self.model2 = self.build()
-
-    def build(self):
-        return self.modelling()
 
     # Build Discriminator Model
     def modelling(self):

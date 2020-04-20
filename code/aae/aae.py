@@ -29,7 +29,7 @@ import numpy as np
 
 
 class AAE:
-    def __init__(self, img_shape, sample_shape=(5,5), latent=10, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['mse', 'binary_crossentropy'], d_loss='binary_crossentropy'):
+    def __init__(self, img_shape, sample_shape=(5,5), latent_dim=10, g_optimizer=Adam(0.0002, 0.5), d_optimizer=Adam(0.0002, 0.5), g_loss=['mse', 'binary_crossentropy'], d_loss='binary_crossentropy'):
         if type(img_shape) == tuple and len(img_shape) == 3:
             self.img_shape = img_shape
         else:
@@ -42,25 +42,42 @@ class AAE:
             print("[Error] Param 'sample_shape' should be a double set, eg. (5,5)")
             sys.exit(1)
         
-        if type(latent) == int and latent > 0:
-            self.latent_dim = latent
+        if type(latent_dim) == int and latent_dim > 0:
+            self.latent_dim = latent_dim
         else:
             print("[Error] Param 'latent' should be a positive integer, eg. 128")
             sys.exit(1)
 
         # Build and compile the discriminator
-        discriminator = Discriminator(self.img_shape, self.latent_dim)
-        self.discriminator = discriminator.model
+        self.discriminator = Discriminator(self.img_shape, self.latent_dim).modelling()
         self.discriminator.compile(loss=d_loss, optimizer=d_optimizer, metrics=['accuracy'])
 
-        vae = Generator(self.img_shape, self.latent_dim, self.discriminator)
+        vae = Generator(self.img_shape, self.latent_dim)
         # Build the encoder and decoder
         self.encoder = vae.encoder
         self.decoder = vae.decoder
 
         # Build the Combined (Generator + Discriminator)
-        self.vae = vae.model
+        self.vae = self.combine()
         self.vae.compile(loss=g_loss, loss_weights=[0.999, 0.001], optimizer=g_optimizer)
+
+    def combine(self):
+        img = Input(shape=self.img_shape)
+        # The generator takes the image, encodes it and reconstructs it
+        # from the encoding
+        encoded_repr = self.encoder(img)
+        reconstructed_img = self.decoder(encoded_repr)
+
+        # For the adversarial_autoencoder model we will only train the generator
+        self.discriminator.trainable = False
+
+        # The discriminator determines validity of the encoding
+        validity = self.discriminator(encoded_repr)
+
+        # The adversarial_autoencoder model  (stacked generator and discriminator)
+        adversarial_autoencoder = Model(img, [reconstructed_img, validity])
+
+        return adversarial_autoencoder
 
     def train_one_epoch(self, X_train, epoch, batch_size, valid, fake):
         # ---------------------
@@ -133,33 +150,12 @@ class AAE:
         plt.close()
 
 class Generator:
-    def __init__(self, img_shape, latent, discrim_model):
+    def __init__(self, img_shape, latent):
         self.img_shape = img_shape
         self.latent_dim = latent
 
         self.encoder = self.build_encoder()
         self.decoder = self.build_decoder()
-        self.discriminator = discrim_model
-        self.model = self.build(discrim_model)
-
-    
-    def build(self, discrim_model):
-        img = Input(shape=self.img_shape)
-        # The generator takes the image, encodes it and reconstructs it
-        # from the encoding
-        encoded_repr = self.encoder(img)
-        reconstructed_img = self.decoder(encoded_repr)
-
-        # For the adversarial_autoencoder model we will only train the generator
-        self.discriminator.trainable = False
-
-        # The discriminator determines validity of the encoding
-        validity = self.discriminator(encoded_repr)
-
-        # The adversarial_autoencoder model  (stacked generator and discriminator)
-        adversarial_autoencoder = Model(img, [reconstructed_img, validity])
-
-        return adversarial_autoencoder
 
     def sampling(self, args): 
         z_mean, z_log_var = args
@@ -201,11 +197,6 @@ class Discriminator:
     def __init__(self, img_shape, latent_dim):
         self.img_shape = img_shape
         self.latent_dim = latent_dim
-
-        self.model = self.build()
-
-    def build(self):
-        return self.modelling()
 
     # Build Discriminator Model
     def modelling(self):
