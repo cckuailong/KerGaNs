@@ -2,6 +2,17 @@
 
 Various GAN via Keras
 
+<<<<<<< HEAD
+## Example
+
+Use wgan-gp to generate the digimon
+
+![digimon]("images/digimon.png")
+
+The code is in "example" folder
+
+=======
+>>>>>>> 9b7d709233f00195d23c6bcf4c3aaaa4dad6641d
 ## Generate Image
 
 ### GAN
