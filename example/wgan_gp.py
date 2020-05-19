@@ -56,12 +56,14 @@ class WGAN_GP:
         self.n_discriminator = 5
 
         # Init the generator and discriminator model
-        if os.path.isfile("result/sample/g.h5"):
-            self.gen_model = load_model("result/sample/g.h5")
+        if os.path.isfile("result/model/g.h5"):
+            print("load g")
+            self.gen_model = load_model("result/model/g.h5")
         else:
             self.gen_model = Generator(self.img_shape, self.latent_dim).modelling()
-        if os.path.isfile("result/sample/d.h5"):
-            self.discrim_model = load_model("result/sample/d.h5")
+        if os.path.isfile("result/model/d.h5"):
+            print("load d")
+            self.discrim_model = load_model("result/model/d.h5")
         else:
             self.discrim_model = Discriminator(self.img_shape, self.latent_dim).modelling()
 
